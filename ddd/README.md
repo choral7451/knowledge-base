@@ -23,9 +23,18 @@ export class Money {
     return new Money(amount, currency);
   }
 
+  static zero(currency: 'KRW' | 'USD'): Money {
+    return new Money(0, currency);
+  }
+
   plus(other: Money): Money {
     this.assertSameCurrency(other);
     return Money.of(this.amount + other.amount, this.currency);    // 새 객체. 검증도 다시
+  }
+
+  minus(other: Money): Money {
+    this.assertSameCurrency(other);
+    return Money.of(this.amount - other.amount, this.currency);    // 음수가 되면 of()가 거부
   }
 
   times(quantity: number): Money {
@@ -160,11 +169,22 @@ class OrderLine {
   }
 }
 
-// 애그리거트 루트. 바깥은 Order만 잡고, OrderLine은 Order의 메서드를 통해서만 바꾼다.
+// 자식 엔티티 2. 적용된 할인. 어떤 쿠폰(다른 애그리거트)에서 왔는지 ID로만 기억한다.
+class AppliedDiscount {
+  constructor(
+    readonly id: string,
+    readonly couponId: string,        // Coupon은 다른 애그리거트 → ID로만 참조
+    readonly amount: Money,
+  ) {}
+}
+
+// 애그리거트 루트. 바깥은 Order만 잡고, OrderLine·AppliedDiscount는 Order의 메서드를 통해서만 바꾼다.
 export class Order {
   private readonly lines: OrderLine[] = [];
+  private readonly discounts: AppliedDiscount[] = [];
   private _status: 'PENDING' | 'PAID' | 'CANCELLED' = 'PENDING';
-  private _totalAmount = Money.zero('KRW');
+  private _totalAmount = Money.zero('KRW');      // 항목 합계
+  private _payableAmount = Money.zero('KRW');    // 합계 − 할인
 
   private constructor(readonly id: string, readonly customerId: string) {}   // Customer도 ID로만
 
@@ -174,7 +194,9 @@ export class Order {
 
   get status() { return this._status; }
   get totalAmount() { return this._totalAmount; }
+  get payableAmount() { return this._payableAmount; }
   getLines(): readonly OrderLine[] { return this.lines; }          // 읽기 전용으로만 노출
+  getDiscounts(): readonly AppliedDiscount[] { return this.discounts; }
 
   addLine(lineId: string, productId: string, unitPrice: Money, quantity: number): void {
     this.assertEditable();
@@ -188,6 +210,15 @@ export class Order {
     const line = this.lines.find((l) => l.id === lineId);
     if (!line) throw new Error('주문에 없는 항목입니다.');
     line.changeQuantity(quantity);                                   // 자식 변경도 루트를 거친다
+    this.recalculate();
+  }
+
+  applyDiscount(discountId: string, couponId: string, amount: Money): void {
+    this.assertEditable();
+    if (this.discounts.some((d) => d.couponId === couponId)) throw new Error('이미 적용한 쿠폰입니다.');
+    const discounted = this.discounts.reduce((sum, d) => sum.plus(d.amount), amount);
+    if (discounted.amount > this._totalAmount.amount) throw new Error('할인이 주문 금액을 넘을 수 없습니다.');
+    this.discounts.push(new AppliedDiscount(discountId, couponId, amount));
     this.recalculate();
   }
 
@@ -207,8 +238,10 @@ export class Order {
     if (this._status !== 'PENDING') throw new Error('결제되었거나 취소된 주문은 변경할 수 없습니다.');
   }
 
-  private recalculate(): void {                                      // 불변식: 총액 = 항목 합계
+  private recalculate(): void {                                      // 불변식: 총액 = 항목 합계, 결제액 = 총액 − 할인
     this._totalAmount = this.lines.reduce((sum, l) => sum.plus(l.amount()), Money.zero('KRW'));
+    const discount = this.discounts.reduce((sum, d) => sum.plus(d.amount), Money.zero('KRW'));
+    this._payableAmount = this._totalAmount.minus(discount);
   }
 }
 
@@ -216,13 +249,15 @@ export class Order {
 const order = Order.place('O-1', 'C-7');
 order.addLine('L-1', 'P-1', Money.of(12_000, 'KRW'), 2);
 order.changeLineQuantity('L-1', 3);
-order.totalAmount.equals(Money.of(36_000, 'KRW'));   // true
+order.applyDiscount('D-1', 'CP-99', Money.of(5_000, 'KRW'));
+order.totalAmount.equals(Money.of(36_000, 'KRW'));     // true
+order.payableAmount.equals(Money.of(31_000, 'KRW'));   // true
 order.pay();
 ```
 
-**한 애그리거트 안**: `Order`(루트) + `OrderLine`(자식 엔티티) + `Money`(값 객체)<br>
-**바깥 애그리거트**: `Product`, `Customer`는 `productId`, `customerId`로만 참조. 객체를 품지 않는다<br>
-**루트가 지키는 불변식**: 총액 = 항목 합계, 결제·취소 후 변경 불가, 같은 상품 중복 불가
+**한 애그리거트 안**: `Order`(루트) + `OrderLine`, `AppliedDiscount`(자식 엔티티) + `Money`(값 객체)<br>
+**바깥 애그리거트**: `Product`, `Customer`, `Coupon`은 `productId`, `customerId`, `couponId`로만 참조. 객체를 품지 않는다<br>
+**루트가 지키는 불변식**: 총액 = 항목 합계, 결제액 = 총액 − 할인, 할인 ≤ 총액, 결제·취소 후 변경 불가, 같은 상품·쿠폰 중복 불가
 
 같은 애그리거트에 넣을지 판단 기준 (위일수록 중요)
 
