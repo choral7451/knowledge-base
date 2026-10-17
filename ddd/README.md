@@ -150,20 +150,21 @@ use(now: Date): boolean {
 
 </td></tr>
 <tr><td><b>Aggregate</b><br>애그리거트</td><td>함께 바뀌어야 일관성이 유지되는 엔티티·값 객체의 묶음. 트랜잭션 경계.</td><td>Module과 달리 패키지가 아니라 트랜잭션·일관성 단위. 다른 애그리거트는 ID로만 참조.</td></tr>
+<tr><td><b>Aggregate Root</b><br>애그리거트 루트</td><td>애그리거트의 대표 엔티티. 바깥은 루트를 통해서만 접근하고, 다른 애그리거트는 루트 ID로만 참조한다.</td><td>일반 Entity와 달리 바깥에서 직접 접근할 수 있는 유일한 엔티티. 리포지토리도 루트에만 둔다.</td></tr>
 <tr><td colspan="3">
 
 ```
 Order 애그리거트
-├── Order                 애그리거트 루트 (엔티티). 바깥은 이것만 잡는다
+├── Order                 ★ Aggregate Root (엔티티). 바깥은 이것만 잡는다
 │   ├── id, status
-│   ├── totalAmount       Money (값 객체)
+│   ├── totalAmount       Money (Value Object)
 │   └── customerId        → Customer 애그리거트를 ID로만 참조
-├── OrderLine ×N          자식 엔티티. 루트를 거쳐서만 접근
+├── OrderLine ×N          Entity (자식). 루트를 거쳐서만 접근
 │   ├── id, quantity
-│   ├── unitPrice         Money (값 객체). 주문 당시 가격 복사
+│   ├── unitPrice         Money (Value Object). 주문 당시 가격 복사
 │   └── productId         → Product 애그리거트를 ID로만 참조
-└── AppliedDiscount ×N    자식 엔티티
-    ├── id, amount        Money (값 객체)
+└── AppliedDiscount ×N    Entity (자식)
+    ├── id, amount        Money (Value Object)
     └── couponId          → Coupon 애그리거트를 ID로만 참조
 ```
 
@@ -182,7 +183,6 @@ Order 애그리거트
 판단이 갈리면 기본값은 **분리**. 1번이 확실할 때만 합친다.
 
 </td></tr>
-<tr><td><b>Aggregate Root</b><br>애그리거트 루트</td><td>애그리거트의 대표 엔티티. 바깥은 루트를 통해서만 접근하고, 다른 애그리거트는 루트 ID로만 참조한다.</td><td>일반 Entity와 달리 바깥에서 직접 접근할 수 있는 유일한 엔티티. 리포지토리도 루트에만 둔다.</td></tr>
 <tr><td><b>Factory</b><br>팩토리</td><td>복잡한 애그리거트·값 객체를 유효한 상태로 생성하는 책임. 정적 메서드나 별도 클래스.</td><td>생성자와 달리 복잡한 조립·검증을 맡는다. 유효하지 않은 객체가 태어나지 않게 한다.</td></tr>
 <tr><td><b>Repository</b><br>리포지토리</td><td>애그리거트를 컬렉션처럼 저장·조회하는 인터페이스. 루트마다 하나.</td><td>DAO와 달리 테이블이 아니라 애그리거트 단위로 다룬다. 인터페이스는 도메인에, 구현은 인프라에.</td></tr>
 <tr><td><b>Domain Service</b><br>도메인 서비스</td><td>특정 엔티티에 속하지 않는, 여러 객체를 놓고 판단하는 상태 없는 업무 규칙.</td><td>Application Service와 달리 업무 규칙 자체를 판단한다. 상태·트랜잭션·DB 접근이 없다.</td></tr>
@@ -262,15 +262,15 @@ src/
     ├── order.module.ts          인터페이스 ↔ 구현 바인딩 (유일한 곳)
     ├── domain/
     │   ├── order/               애그리거트 하나 = 폴더 하나
-    │   │   ├── order.ts                 애그리거트 루트
-    │   │   ├── order-line.ts            자식 엔티티
-    │   │   ├── order.repository.ts      리포지토리 인터페이스
+    │   │   ├── order.ts                 ★ Aggregate Root
+    │   │   ├── order-line.ts            Entity (자식). 루트를 통해서만 접근
+    │   │   ├── order.repository.ts      Repository (인터페이스)
     │   │   ├── order.errors.ts
-    │   │   ├── order-placed.event.ts    도메인 이벤트
+    │   │   ├── order-placed.event.ts    Domain Event
     │   │   └── order.spec.ts
     │   └── pricing/
-    │       ├── money.ts                 값 객체
-    │       └── discount-policy.ts       도메인 서비스
+    │       ├── money.ts                 Value Object
+    │       └── discount-policy.ts       Domain Service
     ├── application/order/
     │   ├── place-order.use-case.ts      애플리케이션 서비스. Command 타입은 이 안에
     │   ├── order-query.service.ts
