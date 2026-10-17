@@ -152,125 +152,24 @@ use(now: Date): boolean {
 <tr><td><b>Aggregate</b><br>애그리거트</td><td>함께 바뀌어야 일관성이 유지되는 엔티티·값 객체의 묶음. 트랜잭션 경계.</td><td>Module과 달리 패키지가 아니라 트랜잭션·일관성 단위. 다른 애그리거트는 ID로만 참조.</td></tr>
 <tr><td colspan="3">
 
-```ts
-// 자식 엔티티. 주문 없이는 존재하지 않는다. 바깥에서 직접 만들거나 찾지 않는다.
-class OrderLine {
-  constructor(
-    readonly id: string,
-    readonly productId: string,       // Product는 다른 애그리거트 → ID로만 참조
-    readonly unitPrice: Money,        // 주문 당시 가격 복사. 상품 가격이 바뀌어도 주문은 그대로
-    private _quantity: number,
-  ) {}
-  get quantity() { return this._quantity; }
-  amount(): Money { return this.unitPrice.times(this._quantity); }
-  changeQuantity(quantity: number): void {
-    if (quantity < 1) throw new Error('수량은 1 이상이어야 합니다.');
-    this._quantity = quantity;
-  }
-}
-
-// 자식 엔티티 2. 적용된 할인. 어떤 쿠폰(다른 애그리거트)에서 왔는지 ID로만 기억한다.
-class AppliedDiscount {
-  constructor(
-    readonly id: string,
-    readonly couponId: string,        // Coupon은 다른 애그리거트 → ID로만 참조
-    readonly amount: Money,
-  ) {}
-}
-
-// 애그리거트 루트. 바깥은 Order만 잡고, OrderLine·AppliedDiscount는 Order의 메서드를 통해서만 바꾼다.
-export class Order {
-  private readonly lines: OrderLine[] = [];
-  private readonly discounts: AppliedDiscount[] = [];
-  private _status: 'PENDING' | 'PAID' | 'CANCELLED' = 'PENDING';
-  private _totalAmount = Money.zero('KRW');      // 항목 합계
-  private _payableAmount = Money.zero('KRW');    // 합계 − 할인
-
-  private constructor(readonly id: string, readonly customerId: string) {}   // Customer도 ID로만
-
-  static place(id: string, customerId: string): Order {
-    return new Order(id, customerId);
-  }
-
-  get status() { return this._status; }
-  get totalAmount() { return this._totalAmount; }
-  get payableAmount() { return this._payableAmount; }
-  getLines(): readonly OrderLine[] { return this.lines; }          // 읽기 전용으로만 노출
-  getDiscounts(): readonly AppliedDiscount[] { return this.discounts; }
-
-  addLine(lineId: string, productId: string, unitPrice: Money, quantity: number): void {
-    this.assertEditable();
-    if (this.lines.some((l) => l.productId === productId)) throw new Error('이미 담긴 상품입니다.');
-    this.lines.push(new OrderLine(lineId, productId, unitPrice, quantity));
-    this.recalculate();
-  }
-
-  changeLineQuantity(lineId: string, quantity: number): void {
-    this.assertEditable();
-    const line = this.lines.find((l) => l.id === lineId);
-    if (!line) throw new Error('주문에 없는 항목입니다.');
-    line.changeQuantity(quantity);                                   // 자식 변경도 루트를 거친다
-    this.recalculate();
-  }
-
-  applyDiscount(discountId: string, couponId: string, amount: Money): void {
-    this.assertEditable();
-    if (this.discounts.some((d) => d.couponId === couponId)) throw new Error('이미 적용한 쿠폰입니다.');
-    const discounted = this.discounts.reduce((sum, d) => sum.plus(d.amount), amount);
-    if (discounted.amount > this._totalAmount.amount) throw new Error('할인이 주문 금액을 넘을 수 없습니다.');
-    this.discounts.push(new AppliedDiscount(discountId, couponId, amount));
-    this.recalculate();
-  }
-
-  pay(): void {
-    this.assertEditable();
-    if (this.lines.length === 0) throw new Error('항목이 없는 주문은 결제할 수 없습니다.');
-    this._status = 'PAID';
-  }
-
-  cancel(): boolean {
-    if (this._status === 'CANCELLED') return false;
-    this._status = 'CANCELLED';
-    return true;
-  }
-
-  private assertEditable(): void {                                   // 불변식: 결제·취소된 주문은 바꿀 수 없다
-    if (this._status !== 'PENDING') throw new Error('결제되었거나 취소된 주문은 변경할 수 없습니다.');
-  }
-
-  private recalculate(): void {                                      // 불변식: 총액 = 항목 합계, 결제액 = 총액 − 할인
-    this._totalAmount = this.lines.reduce((sum, l) => sum.plus(l.amount()), Money.zero('KRW'));
-    const discount = this.discounts.reduce((sum, d) => sum.plus(d.amount), Money.zero('KRW'));
-    this._payableAmount = this._totalAmount.minus(discount);
-  }
-}
-
-// 사용. 리포지토리도 Order 단위로만 저장·조회한다.
-const order = Order.place('O-1', 'C-7');
-order.addLine('L-1', 'P-1', Money.of(12_000, 'KRW'), 2);
-order.changeLineQuantity('L-1', 3);
-order.applyDiscount('D-1', 'CP-99', Money.of(5_000, 'KRW'));
-order.totalAmount.equals(Money.of(36_000, 'KRW'));     // true
-order.payableAmount.equals(Money.of(31_000, 'KRW'));   // true
-order.pay();
+```
+Order 애그리거트
+├── Order                 애그리거트 루트 (엔티티). 바깥은 이것만 잡는다
+│   ├── id, status
+│   ├── totalAmount       Money (값 객체)
+│   └── customerId        → Customer 애그리거트를 ID로만 참조
+├── OrderLine ×N          자식 엔티티. 루트를 거쳐서만 접근
+│   ├── id, quantity
+│   ├── unitPrice         Money (값 객체). 주문 당시 가격 복사
+│   └── productId         → Product 애그리거트를 ID로만 참조
+└── AppliedDiscount ×N    자식 엔티티
+    ├── id, amount        Money (값 객체)
+    └── couponId          → Coupon 애그리거트를 ID로만 참조
 ```
 
-**한 애그리거트 안**: `Order`(루트) + `OrderLine`, `AppliedDiscount`(자식 엔티티) + `Money`(값 객체)<br>
-**바깥 애그리거트**: `Product`, `Customer`, `Coupon`은 `productId`, `customerId`, `couponId`로만 참조. 객체를 품지 않는다<br>
-**루트가 지키는 불변식**: 총액 = 항목 합계, 결제액 = 총액 − 할인, 할인 ≤ 총액, 결제·취소 후 변경 불가, 같은 상품·쿠폰 중복 불가
-
-같은 애그리거트에 넣을지 판단 기준 (위일수록 중요)
-
-| 기준 | Order–OrderLine | Order–Product |
-|---|---|---|
-| 같은 불변식을 지키는가 | O (총액 = 합계) | X |
-| 한 트랜잭션에 함께 바뀌는가 | O | X |
-| 생명주기를 같이하는가 | O (주문 없으면 항목 없음) | X (상품은 주문과 무관) |
-| 바깥에서 그것만 따로 조회하는가 | X | O (상품 페이지) |
-| 묶으면 너무 커지거나 동시 수정이 잦은가 | X | O |
-| **결론** | **같은 애그리거트** | **분리, ID 참조** |
-
-판단이 갈리면 기본값은 **분리**. 불변식이 확실할 때만 합친다.
+**안에 들어가는 것**: 루트 엔티티, 자식 엔티티, 값 객체<br>
+**밖에 두는 것**: 다른 애그리거트(`Product`, `Customer`, `Coupon`). 객체 대신 **ID만** 가진다<br>
+**저장·조회·트랜잭션** 단위는 이 묶음 전체
 
 </td></tr>
 <tr><td><b>Aggregate Root</b><br>애그리거트 루트</td><td>애그리거트의 대표 엔티티. 바깥은 루트를 통해서만 접근하고, 다른 애그리거트는 루트 ID로만 참조한다.</td><td>일반 Entity와 달리 바깥에서 직접 접근할 수 있는 유일한 엔티티. 리포지토리도 루트에만 둔다.</td></tr>
