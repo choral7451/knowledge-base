@@ -211,9 +211,6 @@ presentation → application → domain ← infrastructure
 | infrastructure | 리포지토리 구현, ORM 매핑, 외부 시스템 어댑터, 마이그레이션 | 유스케이스, 컨트롤러 |
 | presentation | 컨트롤러, 요청·응답 타입, 스케줄러·컨슈머 같은 진입점 | 리포지토리 직접 호출, 인프라 |
 
-- 데이터 흐름: `Request → Command → [Application Service] → Result → Response`. 도메인 객체는 층 밖으로 내보내지 않는다.
-- 의존 규칙은 린터(dependency-cruiser 등)로 자동 검사한다.
-
 ## 디렉토리 샘플
 
 ```
