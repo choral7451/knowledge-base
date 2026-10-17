@@ -8,7 +8,7 @@
 |---|---|---|
 | **Value Object**<br>값 객체 | 값이 같으면 같은 것으로 보는 불변 객체. 식별자가 없다. | Entity와 달리 ID가 없다. 값이 같으면 같은 것이고, 바꾸는 대신 새로 만든다. |
 | **Entity**<br>엔티티 | ID로 구분되는 객체. 속성이 바뀌어도 같은 것이며 생명주기가 있다. | Value Object와 달리 ID로 구분한다. 속성이 전부 같아도 ID가 다르면 다른 것. |
-| **Invariant**<br>불변식 | 객체가 항상 지켜야 하는 조건. 예: 잔액 ≥ 0. | 입력 검증은 들어올 때 한 번, 불변식은 바뀔 때마다 매번. |
+| **Invariant**<br>불변식 | 객체가 항상 지켜야 하는 조건. 예: 재고 ≥ 0, 주문 금액 = 항목 합계. | 입력 검증은 들어올 때 한 번, 불변식은 바뀔 때마다 매번. |
 | **Aggregate Root**<br>애그리거트 루트 | 애그리거트의 대표 엔티티. 바깥은 루트를 통해서만 접근하고, 다른 애그리거트는 루트 ID로만 참조한다. | 일반 Entity와 달리 바깥에서 직접 접근할 수 있는 유일한 엔티티. 리포지토리도 루트에만 둔다. |
 | **Aggregate**<br>애그리거트 | 함께 바뀌어야 일관성이 유지되는 엔티티·값 객체의 묶음. 트랜잭션 경계. | Module과 달리 패키지가 아니라 트랜잭션·일관성 단위. 다른 애그리거트는 ID로만 참조. |
 | **Factory**<br>팩토리 | 복잡한 애그리거트·값 객체를 유효한 상태로 생성하는 책임. 정적 메서드나 별도 클래스. | 생성자와 달리 복잡한 조립·검증을 맡는다. 유효하지 않은 객체가 태어나지 않게 한다. |
@@ -23,6 +23,49 @@
 | **Ubiquitous Language**<br>유비쿼터스 언어 | 도메인 전문가·문서·코드가 같은 단어를 쓰는 것. 컨텍스트마다 하나. | 용어집과 달리 코드 이름까지 포함한다. 컨텍스트가 다르면 같은 단어도 다른 언어. |
 | **Subdomain**<br>서브도메인 | 도메인을 쪼갠 단위. 핵심(Core), 지원(Supporting), 범용(Generic)으로 나눈다. | Bounded Context와 달리 업무(문제 공간)의 구분. 코드가 아니라 비즈니스를 나눈다. |
 | **Domain**<br>도메인 | 소프트웨어가 해결하려는 업무 영역과 그 지식. | Subdomain과 달리 전체 업무 영역. 서브도메인은 이것을 쪼갠 조각. |
+
+### Value Object 예시
+
+```ts
+// 돈. 금액과 통화가 같으면 같은 돈이다. 바꾸지 않고 새로 만든다.
+export class Money {
+  private constructor(
+    readonly amount: number,
+    readonly currency: 'KRW' | 'USD',
+  ) {}
+
+  static of(amount: number, currency: 'KRW' | 'USD'): Money {
+    if (!Number.isInteger(amount) || amount < 0) throw new Error(`금액은 0 이상의 정수여야 합니다: ${amount}`);
+    return new Money(amount, currency);
+  }
+
+  plus(other: Money): Money {
+    this.assertSameCurrency(other);
+    return new Money(this.amount + other.amount, this.currency);   // 새 객체
+  }
+
+  times(quantity: number): Money {
+    return new Money(this.amount * quantity, this.currency);
+  }
+
+  equals(other: Money): boolean {                                   // 값으로 비교
+    return this.amount === other.amount && this.currency === other.currency;
+  }
+
+  private assertSameCurrency(other: Money): void {
+    if (this.currency !== other.currency) throw new Error('통화가 다른 돈은 더할 수 없습니다.');
+  }
+}
+
+// 사용
+const price = Money.of(12_000, 'KRW');
+const total = price.times(3).plus(Money.of(3_000, 'KRW'));   // 39,000원. price는 그대로
+total.equals(Money.of(39_000, 'KRW'));                        // true
+```
+
+- `private` 생성자 + 정적 팩토리 `of()`에서 검증
+- 필드는 `readonly`, 연산은 새 객체를 돌려줌
+- `equals()`로 값 비교. ID 없음
 
 ## 포함 관계
 
