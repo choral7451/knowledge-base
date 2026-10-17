@@ -25,11 +25,11 @@ export class Money {
 
   plus(other: Money): Money {
     this.assertSameCurrency(other);
-    return new Money(this.amount + other.amount, this.currency);   // 새 객체
+    return Money.of(this.amount + other.amount, this.currency);    // 새 객체. 검증도 다시
   }
 
   times(quantity: number): Money {
-    return new Money(this.amount * quantity, this.currency);
+    return Money.of(this.amount * quantity, this.currency);
   }
 
   equals(other: Money): boolean {                                   // 값으로 비교
@@ -51,6 +51,52 @@ total.equals(Money.of(39_000, 'KRW'));                        // true
 
 </td></tr>
 <tr><td><b>Entity</b><br>엔티티</td><td>ID로 구분되는 객체. 속성이 바뀌어도 같은 것이며 생명주기가 있다.</td><td>Value Object와 달리 ID로 구분한다. 속성이 전부 같아도 ID가 다르면 다른 것.</td></tr>
+<tr><td colspan="3">
+
+```ts
+// 상품. 이름·가격이 바뀌어도 id가 같으면 같은 상품이다.
+export class Product {
+  private constructor(
+    readonly id: string,
+    private _name: string,
+    private _price: Money,
+    private _status: 'ON_SALE' | 'DISCONTINUED',
+  ) {}
+
+  static register(id: string, name: string, price: Money): Product {
+    if (name.trim() === '') throw new Error('상품 이름은 비울 수 없습니다.');
+    return new Product(id, name, price, 'ON_SALE');
+  }
+
+  get name() { return this._name; }
+  get price() { return this._price; }
+  get status() { return this._status; }
+
+  changePrice(price: Money): void {                 // 상태 변경은 메서드로만
+    if (this._status === 'DISCONTINUED') throw new Error('판매 종료된 상품의 가격은 바꿀 수 없습니다.');
+    this._price = price;
+  }
+
+  discontinue(): boolean {                          // 이미 그 상태면 false (멱등)
+    if (this._status === 'DISCONTINUED') return false;
+    this._status = 'DISCONTINUED';
+    return true;
+  }
+
+  equals(other: Product): boolean {                 // id로만 비교
+    return this.id === other.id;
+  }
+}
+
+// 사용
+const a = Product.register('P-1', '티셔츠', Money.of(12_000, 'KRW'));
+a.changePrice(Money.of(9_900, 'KRW'));            // 가격이 바뀌어도
+a.equals(Product.register('P-1', '티셔츠', Money.of(12_000, 'KRW')));   // true. 같은 id
+```
+
+<code>id</code>로 동일성 판단. 속성이 바뀌어도 같은 상품<br>상태 변경은 업무 동사 메서드로만(<code>changePrice</code>, <code>discontinue</code>). 필드 직접 대입 불가<br>생명주기가 있음: 등록 → 가격 변경 → 판매 종료
+
+</td></tr>
 <tr><td><b>Invariant</b><br>불변식</td><td>객체가 항상 지켜야 하는 조건. 예: 재고 ≥ 0, 주문 금액 = 항목 합계.</td><td>입력 검증은 들어올 때 한 번, 불변식은 바뀔 때마다 매번.</td></tr>
 <tr><td><b>Aggregate Root</b><br>애그리거트 루트</td><td>애그리거트의 대표 엔티티. 바깥은 루트를 통해서만 접근하고, 다른 애그리거트는 루트 ID로만 참조한다.</td><td>일반 Entity와 달리 바깥에서 직접 접근할 수 있는 유일한 엔티티. 리포지토리도 루트에만 둔다.</td></tr>
 <tr><td><b>Aggregate</b><br>애그리거트</td><td>함께 바뀌어야 일관성이 유지되는 엔티티·값 객체의 묶음. 트랜잭션 경계.</td><td>Module과 달리 패키지가 아니라 트랜잭션·일관성 단위. 다른 애그리거트는 ID로만 참조.</td></tr>
