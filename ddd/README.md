@@ -98,6 +98,48 @@ a.equals(Product.register('P-1', '티셔츠', Money.of(12_000, 'KRW')));   // tr
 
 </td></tr>
 <tr><td><b>Invariant</b><br>불변식</td><td>객체가 항상 지켜야 하는 조건. 예: 재고 ≥ 0, 주문 금액 = 항목 합계.</td><td>입력 검증은 들어올 때 한 번, 불변식은 바뀔 때마다 매번.</td></tr>
+<tr><td colspan="3">
+
+**"재고는 0 미만이 될 수 없다"**
+
+```ts
+decrease(quantity: number): void {
+  if (this.stock - quantity < 0) throw new Error('재고가 부족합니다.');
+  this.stock -= quantity;
+}
+```
+
+**"주문 금액은 항상 항목 금액의 합이다"**
+
+```ts
+addLine(line: OrderLine): void {
+  this.lines.push(line);
+  this.totalAmount = this.lines.reduce((sum, l) => sum.plus(l.amount()), Money.zero('KRW'));  // 항목이 바뀔 때마다 다시 계산
+}
+```
+
+**"결제가 끝난 주문은 항목을 바꿀 수 없다"**
+
+```ts
+addLine(line: OrderLine): void {
+  if (this.status !== 'PENDING') throw new Error('결제된 주문은 변경할 수 없습니다.');
+  ...
+}
+```
+
+**"쿠폰은 한 번만 쓸 수 있다"**
+
+```ts
+use(now: Date): boolean {
+  if (this.usedAt !== null) return false;   // 이미 썼으면 아무것도 안 함
+  this.usedAt = now;
+  return true;
+}
+```
+
+공통점: 조건을 깨뜨릴 수 있는 **모든 메서드**가 같은 검사를 한다. 필드를 밖에서 직접 바꾸지 못하게 막아야 우회가 안 된다.
+
+</td></tr>
 <tr><td><b>Aggregate Root</b><br>애그리거트 루트</td><td>애그리거트의 대표 엔티티. 바깥은 루트를 통해서만 접근하고, 다른 애그리거트는 루트 ID로만 참조한다.</td><td>일반 Entity와 달리 바깥에서 직접 접근할 수 있는 유일한 엔티티. 리포지토리도 루트에만 둔다.</td></tr>
 <tr><td><b>Aggregate</b><br>애그리거트</td><td>함께 바뀌어야 일관성이 유지되는 엔티티·값 객체의 묶음. 트랜잭션 경계.</td><td>Module과 달리 패키지가 아니라 트랜잭션·일관성 단위. 다른 애그리거트는 ID로만 참조.</td></tr>
 <tr><td><b>Factory</b><br>팩토리</td><td>복잡한 애그리거트·값 객체를 유효한 상태로 생성하는 책임. 정적 메서드나 별도 클래스.</td><td>생성자와 달리 복잡한 조립·검증을 맡는다. 유효하지 않은 객체가 태어나지 않게 한다.</td></tr>
